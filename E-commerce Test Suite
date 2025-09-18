@@ -1,0 +1,340 @@
+// cypress/e2e/ecommerce-tests.cy.js
+
+describe('E-commerce Website Automation Tests', () => {
+  
+  beforeEach(() => {
+    // Visit the sample e-commerce site before each test
+    cy.visit('https://demo.evershop.io/')
+    
+    // Set viewport size for consistency
+    cy.viewport(1280, 720)
+  })
+
+  describe('Homepage Tests', () => {
+    it('should load homepage successfully', () => {
+      // Verify page title
+      cy.title().should('contain', 'EverShop')
+      
+      // Check if main navigation elements are visible
+      cy.get('[data-testid="header"]').should('be.visible')
+      cy.get('[data-testid="main-menu"]').should('be.visible')
+      
+      // Verify hero section is present
+      cy.get('.hero-section, .banner, .main-banner').should('be.visible')
+    })
+
+    it('should have working search functionality', () => {
+      // Test search functionality
+      cy.get('input[type="search"], input[placeholder*="Search"], .search-input')
+        .first()
+        .type('shoes{enter}')
+      
+      // Verify search results page loads
+      cy.url().should('include', 'search')
+      cy.get('.product-item, .product-card').should('have.length.greaterThan', 0)
+    })
+
+    it('should navigate to product categories', () => {
+      // Test category navigation
+      cy.get('nav a, .menu-item a')
+        .contains(/men|women|shoes|clothing/i)
+        .first()
+        .click()
+      
+      // Verify category page loads
+      cy.get('.product-item, .product-card, .product-list').should('be.visible')
+    })
+  })
+
+  describe('Product Page Tests', () => {
+    it('should display product details correctly', () => {
+      // Navigate to first product
+      cy.get('.product-item a, .product-card a, .product-link')
+        .first()
+        .click()
+      
+      // Verify product page elements
+      cy.get('.product-title, .product-name, h1').should('be.visible')
+      cy.get('.product-price, .price').should('be.visible')
+      cy.get('.product-image, .product-photo img').should('be.visible')
+      cy.get('button')
+        .contains(/add to cart|buy now/i)
+        .should('be.visible')
+    })
+
+    it('should allow adding product to cart', () => {
+      // Find and click on a product
+      cy.get('.product-item a, .product-card a')
+        .first()
+        .click()
+      
+      // Add to cart
+      cy.get('button')
+        .contains(/add to cart/i)
+        .click()
+      
+      // Verify cart update (look for cart icon with count or success message)
+      cy.get('.cart-count, .cart-badge, .cart-items-count', { timeout: 10000 })
+        .should('contain', '1')
+        .or('contain', 'added')
+    })
+  })
+
+  describe('Shopping Cart Tests', () => {
+    beforeEach(() => {
+      // Add a product to cart before each cart test
+      cy.get('.product-item a, .product-card a')
+        .first()
+        .click()
+      
+      cy.get('button')
+        .contains(/add to cart/i)
+        .click()
+        
+      // Wait for cart update
+      cy.wait(2000)
+    })
+
+    it('should display cart contents', () => {
+      // Navigate to cart
+      cy.get('.cart-icon, .shopping-cart, a[href*="cart"]')
+        .click()
+      
+      // Verify cart page
+      cy.url().should('include', 'cart')
+      cy.get('.cart-item, .cart-product').should('have.length.greaterThan', 0)
+    })
+
+    it('should allow quantity updates in cart', () => {
+      // Go to cart
+      cy.get('.cart-icon, .shopping-cart, a[href*="cart"]')
+        .click()
+      
+      // Find quantity input and update
+      cy.get('input[type="number"], .quantity-input')
+        .first()
+        .clear()
+        .type('2')
+      
+      // Click update button if present
+      cy.get('button')
+        .contains(/update|refresh/i)
+        .click({ force: true })
+        .catch(() => {
+          // If no update button, quantity might auto-update
+          cy.log('Auto-update quantity')
+        })
+      
+      // Verify quantity change
+      cy.get('input[type="number"], .quantity-input')
+        .first()
+        .should('have.value', '2')
+    })
+
+    it('should allow removing items from cart', () => {
+      // Go to cart
+      cy.get('.cart-icon, .shopping-cart, a[href*="cart"]')
+        .click()
+      
+      // Remove item
+      cy.get('button, a')
+        .contains(/remove|delete|×/i)
+        .first()
+        .click()
+      
+      // Verify item removed
+      cy.get('.cart-empty, .empty-cart')
+        .should('be.visible')
+        .or(() => {
+          cy.get('.cart-item, .cart-product').should('have.length', 0)
+        })
+    })
+  })
+
+  describe('User Registration Tests', () => {
+    it('should allow user registration', () => {
+      // Navigate to registration page
+      cy.get('a')
+        .contains(/sign up|register|create account/i)
+        .click()
+      
+      // Fill registration form
+      const randomEmail = `testuser${Date.now()}@example.com`
+      
+      cy.get('input[name*="email"], input[type="email"]')
+        .type(randomEmail)
+      
+      cy.get('input[name*="password"], input[type="password"]')
+        .first()
+        .type('TestPassword123!')
+      
+      cy.get('input[name*="first"], input[placeholder*="First"]')
+        .type('Test')
+      
+      cy.get('input[name*="last"], input[placeholder*="Last"]')
+        .type('User')
+      
+      // Submit form
+      cy.get('button[type="submit"], button')
+        .contains(/sign up|register|create/i)
+        .click()
+      
+      // Verify successful registration (redirect or success message)
+      cy.url()
+        .should('not.contain', 'register')
+        .or(() => {
+          cy.get('.success, .alert-success')
+            .should('be.visible')
+        })
+    })
+  })
+
+  describe('User Login Tests', () => {
+    it('should handle invalid login credentials', () => {
+      // Navigate to login page
+      cy.get('a')
+        .contains(/sign in|login|log in/i)
+        .click()
+      
+      // Enter invalid credentials
+      cy.get('input[name*="email"], input[type="email"]')
+        .type('invalid@example.com')
+      
+      cy.get('input[name*="password"], input[type="password"]')
+        .type('wrongpassword')
+      
+      // Submit login
+      cy.get('button[type="submit"], button')
+        .contains(/sign in|login|log in/i)
+        .click()
+      
+      // Verify error message
+      cy.get('.error, .alert-danger, .invalid-feedback')
+        .should('be.visible')
+        .should('contain.text', /invalid|incorrect|error/i)
+    })
+  })
+
+  describe('Responsive Design Tests', () => {
+    const viewports = [
+      { width: 375, height: 667, device: 'iPhone SE' },
+      { width: 768, height: 1024, device: 'iPad' },
+      { width: 1440, height: 900, device: 'Desktop' }
+    ]
+
+    viewports.forEach(viewport => {
+      it(`should display correctly on ${viewport.device}`, () => {
+        cy.viewport(viewport.width, viewport.height)
+        
+        // Check if main elements are visible
+        cy.get('header, .header').should('be.visible')
+        
+        // On mobile, check if menu toggle exists
+        if (viewport.width < 768) {
+          cy.get('.menu-toggle, .hamburger, .mobile-menu-button')
+            .should('be.visible')
+        }
+        
+        // Verify content is not horizontally scrolling
+        cy.get('body').then($body => {
+          expect($body[0].scrollWidth).to.be.at.most(viewport.width + 50)
+        })
+      })
+    })
+  })
+
+  describe('Form Validation Tests', () => {
+    it('should validate contact form fields', () => {
+      // Navigate to contact page
+      cy.get('a')
+        .contains(/contact|support/i)
+        .click()
+      
+      // Try to submit empty form
+      cy.get('button[type="submit"], button')
+        .contains(/send|submit|contact/i)
+        .click()
+      
+      // Check for validation messages
+      cy.get('.error, .invalid-feedback, input:invalid')
+        .should('have.length.greaterThan', 0)
+      
+      // Fill form with valid data
+      cy.get('input[name*="name"], input[placeholder*="name"]')
+        .type('Test User')
+      
+      cy.get('input[name*="email"], input[type="email"]')
+        .type('test@example.com')
+      
+      cy.get('textarea, input[name*="message"]')
+        .type('This is a test message')
+      
+      // Submit form
+      cy.get('button[type="submit"], button')
+        .contains(/send|submit|contact/i)
+        .click()
+      
+      // Verify success
+      cy.get('.success, .alert-success, .thank-you')
+        .should('be.visible')
+        .or(() => {
+          cy.url().should('include', 'success')
+        })
+    })
+  })
+
+  describe('Performance Tests', () => {
+    it('should load pages within acceptable time', () => {
+      const startTime = Date.now()
+      
+      cy.visit('https://demo.evershop.io/')
+      
+      cy.window().then(() => {
+        const loadTime = Date.now() - startTime
+        expect(loadTime).to.be.lessThan(5000) // 5 seconds max
+      })
+    })
+
+    it('should have proper meta tags for SEO', () => {
+      cy.get('head meta[name="description"]')
+        .should('have.attr', 'content')
+        .should('not.be.empty')
+      
+      cy.get('head title')
+        .should('not.be.empty')
+    })
+  })
+
+  describe('Accessibility Tests', () => {
+    it('should have proper alt texts for images', () => {
+      cy.get('img').each($img => {
+        cy.wrap($img).should('have.attr', 'alt')
+      })
+    })
+
+    it('should have proper form labels', () => {
+      cy.get('input[type="text"], input[type="email"], input[type="password"]')
+        .each($input => {
+          const id = $input.attr('id')
+          const name = $input.attr('name')
+          
+          if (id) {
+            cy.get(`label[for="${id}"]`).should('exist')
+          } else {
+            cy.wrap($input).should('have.attr', 'placeholder')
+              .or('have.attr', 'aria-label')
+          }
+        })
+    })
+
+    it('should support keyboard navigation', () => {
+      // Test tab navigation
+      cy.get('body').tab()
+      cy.focused().should('be.visible')
+      
+      // Test multiple tabs
+      cy.tab().tab().tab()
+      cy.focused().should('be.visible')
+    })
+  })
+})
