@@ -1,0 +1,222 @@
+// cypress.config.js
+const { defineConfig } = require('cypress')
+
+module.exports = defineConfig({
+  e2e: {
+    baseUrl: 'https://demo.evershop.io',
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    defaultCommandTimeout: 10000,
+    requestTimeout: 10000,
+    responseTimeout: 10000,
+    pageLoadTimeout: 30000,
+    video: true,
+    screenshotOnRunFailure: true,
+    retries: {
+      runMode: 2,
+      openMode: 1
+    },
+    env: {
+      hideXHRInCommandLog: true
+    },
+    setupNodeEvents(on, config) {
+      // implement node event listeners here
+      on('before:browser:launch', (browser = {}, launchOptions) => {
+        if (browser.name === 'chrome') {
+          launchOptions.args.push('--disable-dev-shm-usage')
+          launchOptions.args.push('--no-sandbox')
+        }
+        return launchOptions
+      })
+    },
+  },
+})
+
+// ===================================================
+
+// cypress/support/e2e.js
+import './commands'
+
+// Hide fetch/XHR requests from command log
+if (Cypress.env('hideXHRInCommandLog')) {
+  const app = window.top
+  if (app && !app.document.head.querySelector('[data-hide-command-log-request]')) {
+    const style = app.document.createElement('style')
+    style.innerHTML = '.command-name-request, .command-name-xhr { display: none }'
+    style.setAttribute('data-hide-command-log-request', '')
+    app.document.head.appendChild(style)
+  }
+}
+
+// ===================================================
+
+// cypress/support/commands.js
+
+// Custom command for login
+Cypress.Commands.add('login', (email, password) => {
+  cy.session([email, password], () => {
+    cy.visit('/login')
+    cy.get('input[name*="email"], input[type="email"]').type(email)
+    cy.get('input[name*="password"], input[type="password"]').type(password)
+    cy.get('button[type="submit"], button').contains(/sign in|login/i).click()
+    cy.url().should('not.contain', 'login')
+  })
+})
+
+// Custom command for adding product to cart
+Cypress.Commands.add('addToCart', (productSelector = '.product-item a:first') => {
+  cy.get(productSelector).click()
+  cy.get('button').contains(/add to cart/i).click()
+  cy.get('.cart-count, .cart-badge', { timeout: 10000 }).should('exist')
+})
+
+// Custom command for clearing cart
+Cypress.Commands.add('clearCart', () => {
+  cy.visit('/cart')
+  cy.get('body').then($body => {
+    if ($body.find('.cart-item, .cart-product').length > 0) {
+      cy.get('button, a').contains(/clear|empty|remove all/i).click()
+    }
+  })
+})
+
+// Custom command for handling dynamic content loading
+Cypress.Commands.add('waitForContentLoad', (selector, timeout = 10000) => {
+  cy.get(selector, { timeout }).should('be.visible')
+  cy.get('.loading, .spinner', { timeout: 5000 }).should('not.exist')
+})
+
+// Custom command for accessibility testing
+Cypress.Commands.add('checkA11y', (selector = 'body') => {
+  cy.get(selector).within(() => {
+    // Check for images without alt text
+    cy.get('img').each($img => {
+      cy.wrap($img).should('have.attr', 'alt')
+    })
+    
+    // Check for form inputs without labels
+    cy.get('input[type="text"], input[type="email"], input[type="password"], textarea')
+      .each($input => {
+        const id = $input.attr('id')
+        if (id) {
+          cy.get(`label[for="${id}"]`).should('exist')
+        } else {
+          cy.wrap($input)
+            .should('satisfy', $el => 
+              $el.attr('placeholder') || 
+              $el.attr('aria-label') || 
+              $el.closest('label').length > 0
+            )
+        }
+      })
+  })
+})
+
+// Custom command for responsive testing
+Cypress.Commands.add('testResponsive', () => {
+  const viewports = [
+    { width: 320, height: 568 },  // iPhone 5
+    { width: 375, height: 667 },  // iPhone 6/7/8
+    { width: 768, height: 1024 }, // iPad
+    { width: 1024, height: 768 }, // iPad Landscape
+    { width: 1440, height: 900 }  // Desktop
+  ]
+  
+  viewports.forEach(viewport => {
+    cy.viewport(viewport.width, viewport.height)
+    cy.get('body').should('be.visible')
+    
+    // Check for horizontal scroll
+    cy.window().then(win => {
+      expect(win.document.body.scrollWidth).to.be.at.most(viewport.width + 50)
+    })
+  })
+})
+
+// Custom command for form validation testing
+Cypress.Commands.add('testFormValidation', (formSelector) => {
+  cy.get(formSelector).within(() => {
+    // Try to submit empty form
+    cy.get('button[type="submit"]').click()
+    
+    // Check for validation messages
+    cy.get('.error, .invalid-feedback, input:invalid')
+      .should('have.length.greaterThan', 0)
+  })
+})
+
+// Custom command for tab navigation
+Cypress.Commands.add('tab', { prevSubject: 'optional' }, (subject) => {
+  return cy.wrap(subject).trigger('keydown', { keyCode: 9 })
+})
+
+// ===================================================
+
+// package.json
+{
+  "name": "cypress-ecommerce-automation",
+  "version": "1.0.0",
+  "description": "Cypress automation tests for e-commerce website",
+  "main": "index.js",
+  "scripts": {
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:run:chrome": "cypress run --browser chrome",
+    "cy:run:firefox": "cypress run --browser firefox",
+    "cy:run:headed": "cypress run --headed",
+    "cy:run:spec": "cypress run --spec",
+    "test": "cypress run",
+    "test:smoke": "cypress run --spec 'cypress/e2e/**/*smoke*.cy.js'",
+    "test:regression": "cypress run --spec 'cypress/e2e/**/*.cy.js'",
+    "test:parallel": "cypress run --record --parallel --ci-build-id $CI_BUILD_ID"
+  },
+  "devDependencies": {
+    "cypress": "^13.6.0"
+  },
+  "keywords": [
+    "cypress",
+    "testing",
+    "automation",
+    "e2e",
+    "ecommerce"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
+
+// ===================================================
+
+// .gitignore
+node_modules/
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+cypress/fixtures/downloads/
+.DS_Store
+*.log
+.env
+dist/
+build/
+
+// ===================================================
+
+// cypress/fixtures/users.json
+{
+  "validUser": {
+    "email": "testuser@example.com",
+    "password": "TestPassword123!",
+    "firstName": "Test",
+    "lastName": "User"
+  },
+  "adminUser": {
+    "email": "admin@example.com",
+    "password": "AdminPassword123!",
+    "firstName": "Admin",
+    "lastName": "User"
+  },
+  "testData": {
+    "searchTerms": ["shoes", "shirt", "dress", "accessories"],
+    "invalidEmails": ["invalid", "@example.com", "test@", "plaintext"],
+    "weakPasswords": ["123", "password", "abc"]
+  }
+}
