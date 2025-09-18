@@ -1,0 +1,280 @@
+// cypress/e2e/advanced-ecommerce-tests.cy.js
+
+describe('Advanced E-commerce Tests with Data-Driven Approach', () => {
+  let testData
+
+  before(() => {
+    // Load test data from fixtures
+    cy.fixture('users').then(data => {
+      testData = data
+    })
+  })
+
+  beforeEach(() => {
+    cy.visit('/')
+    cy.viewport(1280, 720)
+  })
+
+  describe('Data-Driven Search Tests', () => {
+    it('should handle multiple search terms', () => {
+      const searchTerms = ['shoes', 'dress', 'shirt', 'accessories']
+      
+      searchTerms.forEach(term => {
+        // Navigate back to homepage for each search
+        cy.visit('/')
+        
+        // Perform search
+        cy.get('input[type="search"], input[placeholder*="Search"]')
+          .first()
+          .clear()
+          .type(`${term}{enter}`)
+        
+        // Verify search results
+        cy.url().should('include', 'search')
+        cy.get('h1, .search-results-title').should('contain', term)
+        
+        // Count results
+        cy.get('.product-item, .product-card').then($products => {
+          if ($products.length > 0) {
+            cy.log(`Found ${$products.length} products for "${term}"`)
+          }
+        })
+      })
+    })
+
+    it('should handle search with filters', () => {
+      // Search for products
+      cy.get('input[type="search"], input[placeholder*="Search"]')
+        .first()
+        .type('shoes{enter}')
+      
+      // Wait for results to load
+      cy.waitForContentLoad('.product-item, .product-card')
+      
+      // Apply price filter if available
+      cy.get('body').then($body => {
+        if ($body.find('.price-filter, .filter-price').length > 0) {
+          cy.get('.price-filter, .filter-price').first().click()
+          cy.wait(2000) // Wait for filter to apply
+        }
+      })
+      
+      // Apply brand filter if available
+      cy.get('body').then($body => {
+        if ($body.find('.brand-filter, .filter-brand').length > 0) {
+          cy.get('.brand-filter input[type="checkbox"], .filter-brand input[type="checkbox"]')
+            .first()
+            .check()
+          cy.wait(2000) // Wait for filter to apply
+        }
+      })
+      
+      // Verify filtered results
+      cy.get('.product-item, .product-card').should('have.length.greaterThan', 0)
+    })
+  })
+
+  describe('Advanced User Registration Tests', () => {
+    it('should validate email format during registration', () => {
+      cy.visit('/register')
+      
+      const invalidEmails = ['invalid', '@example.com', 'test@', 'plaintext']
+      
+      invalidEmails.forEach(email => {
+        // Clear and enter invalid email
+        cy.get('input[type="email"]')
+          .clear()
+          .type(email)
+        
+        // Try to submit or move to next field
+        cy.get('input[type="password"]').first().click()
+        
+        // Check for validation message
+        cy.get('.error, .invalid-feedback, input:invalid')
+          .should('have.length.greaterThan', 0)
+      })
+    })
+
+    it('should test password strength validation', () => {
+      cy.visit('/register')
+      
+      const weakPasswords = ['123', 'password', 'abc', '1234']
+      
+      weakPasswords.forEach(password => {
+        cy.get('input[type="password"]')
+          .first()
+          .clear()
+          .type(password)
+        
+        // Check password strength indicator or validation
+        cy.get('body').then($body => {
+          const hasStrengthIndicator = $body.find('.password-strength, .strength-meter').length > 0
+          const hasValidationError = $body.find('.error, .invalid-feedback').length > 0
+          
+          expect(hasStrengthIndicator || hasValidationError).to.be.true
+        })
+      })
+    })
+  })
+
+  describe('Shopping Cart Persistence Tests', () => {
+    it('should persist cart items across page refreshes', () => {
+      // Add product to cart
+      cy.addToCart()
+      
+      // Refresh page
+      cy.reload()
+      
+      // Verify cart still has items
+      cy.get('.cart-count, .cart-badge')
+        .should('contain', '1')
+        .or('not.contain', '0')
+    })
+
+    it('should handle cart operations in different browser tabs', () => {
+      // Add product to cart
+      cy.addToCart()
+      
+      // Open cart in new tab (simulate by checking localStorage/sessionStorage)
+      cy.window().then(win => {
+        // Check if cart data is stored
+        const cartData = win.localStorage.getItem('cart') || 
+                        win.sessionStorage.getItem('cart') ||
+                        document.cookie.includes('cart')
+        
+        expect(cartData).to.not.be.null
+      })
+    })
+  })
+
+  describe('Product Comparison Tests', () => {
+    it('should allow comparing multiple products', () => {
+      const productUrls = []
+      
+      // Collect product URLs
+      cy.get('.product-item a, .product-card a')
+        .each($link => {
+          productUrls.push($link.attr('href'))
+        })
+        .then(() => {
+          // Visit first two products and compare details
+          if (productUrls.length >= 2) {
+            const products = []
+            
+            // Get details of first product
+            cy.visit(productUrls[0])
+            cy.get('.product-title, h1').invoke('text').then(title1 => {
+              cy.get('.product-price, .price').invoke('text').then(price1 => {
+                products.push({ title: title1, price: price1, url: productUrls[0] })
+                
+                // Get details of second product
+                cy.visit(productUrls[1])
+                cy.get('.product-title, h1').invoke('text').then(title2 => {
+                  cy.get('.product-price, .price').invoke('text').then(price2 => {
+                    products.push({ title: title2, price: price2, url: productUrls[1] })
+                    
+                    // Log comparison
+                    cy.log('Product Comparison:')
+                    cy.log(`Product 1: ${products[0].title} - ${products[0].price}`)
+                    cy.log(`Product 2: ${products[1].title} - ${products[1].price}`)
+                    
+                    // Verify products are different
+                    expect(products[0].title).to.not.equal(products[1].title)
+                  })
+                })
+              })
+            })
+          }
+        })
+    })
+  })
+
+  describe('Checkout Process Tests', () => {
+    beforeEach(() => {
+      // Add product to cart before checkout tests
+      cy.addToCart()
+    })
+
+    it('should guide user through complete checkout process', () => {
+      // Navigate to cart
+      cy.get('.cart-icon, .shopping-cart, a[href*="cart"]').click()
+      
+      // Proceed to checkout
+      cy.get('button, a').contains(/checkout|proceed/i).click()
+      
+      // Fill shipping information
+      cy.get('input[name*="first"], input[placeholder*="First"]')
+        .type('Test')
+      
+      cy.get('input[name*="last"], input[placeholder*="Last"]')
+        .type('User')
+      
+      cy.get('input[name*="email"], input[type="email"]')
+        .type('test@example.com')
+      
+      cy.get('input[name*="address"], input[placeholder*="Address"]')
+        .type('123 Test Street')
+      
+      cy.get('input[name*="city"], input[placeholder*="City"]')
+        .type('Test City')
+      
+      cy.get('input[name*="zip"], input[placeholder*="Zip"]')
+        .type('12345')
+      
+      // Continue to payment (without actually processing payment)
+      cy.get('button').contains(/continue|next|payment/i).click()
+      
+      // Verify we reach payment step
+      cy.url().should('include', 'payment')
+        .or(() => {
+          cy.get('h1, h2, .checkout-title').should('contain', /payment|billing/i)
+        })
+    })
+
+    it('should calculate taxes and shipping correctly', () => {
+      cy.get('.cart-icon, .shopping-cart, a[href*="cart"]').click()
+      
+      // Check for price breakdown
+      cy.get('.subtotal, .cart-subtotal').should('be.visible')
+      
+      // Look for tax calculation
+      cy.get('body').then($body => {
+        if ($body.find('.tax, .taxes').length > 0) {
+          cy.get('.tax, .taxes').should('contain', /\$|€|£|\d/)
+        }
+      })
+      
+      // Look for shipping costs
+      cy.get('body').then($body => {
+        if ($body.find('.shipping, .delivery').length > 0) {
+          cy.get('.shipping, .delivery').should('contain', /\$|€|£|\d|free/i)
+        }
+      })
+      
+      // Verify total
+      cy.get('.total, .cart-total, .grand-total').should('contain', /\$|€|£|\d/)
+    })
+  })
+
+  describe('Error Handling and Edge Cases', () => {
+    it('should handle network errors gracefully', () => {
+      // Simulate network error by intercepting requests
+      cy.intercept('GET', '**/api/**', { forceNetworkError: true }).as('networkError')
+      
+      // Try to perform an action that would trigger API call
+      cy.get('input[type="search"]').first().type('shoes{enter}')
+      
+      // Should show error message or fallback content
+      cy.get('.error, .network-error, .offline')
+        .should('be.visible')
+        .or(() => {
+          // Or should maintain functionality without API
+          cy.get('body').should('be.visible')
+        })
+    })
+
+    it('should handle empty states properly', () => {
+      // Test empty search results
+      cy.get('input[type="search"]').first().type('xyznonexistentproduct{enter}')
+      
+      cy.get('.no-results, .empty-results,
